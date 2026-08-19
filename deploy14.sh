@@ -25,6 +25,31 @@
 #      end (doctor marks "تم" pending → reception picks same patient in
 #      "إضافة خدمة", sees the banner, submits → exactly one visit/invoice in
 #      the DB, linked to the appointment, and the "محتاج تحصيل" badge clears).
+#   2. Locked down the patient's medical record (سجل الزيارات on /patients/[id])
+#      to doctors (self only) + admin + clinic_manager. Previously ANY logged-in
+#      role (reception, accountant included) could open a patient's medical
+#      file directly and add/edit a "visit" with free-text treatment notes and
+#      an arbitrary doctor picked from a dropdown — no permission check at all
+#      server-side, so the clinical record was getting polluted with
+#      front-desk entries. Also fixed the root cause of "the doctor I need
+#      isn't even in the dropdown, are services tied to specific doctors?":
+#      the doctor <select> was being filtered through an empty/unmanaged
+#      service_doctors mapping with no settings UI to populate it, so it could
+#      silently hide the very doctor admin/manager needed to pick. That
+#      filtering is removed. New behavior: admin/clinic_manager adding a visit
+#      no longer freely pick "الطبيب المعالج" — it auto-locks to whichever
+#      doctor has the patient's appointment booked (via reception) for that
+#      same date, and they only get to pick "الطبيب المساعد" if a different
+#      doctor actually saw the patient. If there's no appointment for that
+#      date (backfill/old record), it falls back to a normal manual doctor
+#      picker (now unfiltered). Enforced server-side in addVisitAction /
+#      updateVisitAction, not just hidden in the UI. Reception/accountant can
+#      still open the page to read the history, just can't add/edit it anymore.
+#      Verified locally via Playwright across admin (with today's appointment
+#      → doctor auto-locked + assistant picker; without one → normal unfiltered
+#      picker, visit saved with the chosen doctor), reception (no add-form, a
+#      view-only note instead, no "تعديل" buttons), and a doctor account
+#      (still always forced to themselves regardless of any appointment).
 #
 # Run as: bash deploy14.sh
 set -e
@@ -44,8 +69,8 @@ echo "== extracting update (full src/ tree — overwrites in place) =="
 tar -xzf clinic-app-batch14.tar.gz -C /opt/clinic-app
 
 echo "== verifying the new code actually landed on disk =="
-if grep -q "linkedAppointmentId" /opt/clinic-app/src/app/front-desk/actions.ts; then
-  echo "OK: front-desk/actions.ts has the new auto-link code."
+if grep -q "linkedAppointmentId" /opt/clinic-app/src/app/front-desk/actions.ts && grep -q "canEditMedicalRecordFor" "/opt/clinic-app/src/app/patients/[id]/actions.ts"; then
+  echo "OK: front-desk/actions.ts has the new auto-link code, and patients/[id]/actions.ts has the medical-record permission gate."
 else
   echo "PROBLEM: the new code did not land correctly."
   echo "GitHub may still be serving an old clinic-app-batch14.tar.gz - go re-upload it"
