@@ -3,7 +3,12 @@
 # (batch 18 was never deployed on its own — both ship together here on top of
 # batches 11-17, which are already live on the server). Ships the FULL current
 # src/ tree as one package (not an incremental diff), so it's safe regardless
-# of exactly which files changed since the last deploy.
+# of exactly which files changed since the last deploy. This package ALSO
+# includes package.json + package-lock.json (unlike previous batches) because
+# batch 18 added a brand-new npm dependency (exceljs, for the /reports/export
+# Excel download) that isn't installed on the server yet — the first attempt
+# at this deploy failed at `npm run build` with "Module not found: Can't
+# resolve 'exceljs'" for exactly this reason. `npm install` below installs it.
 #
 # Batch 18 — ثمانية بنود:
 #   1. كلمة سر افتراضية ثابتة "123" لأي مستخدم جديد (دكتور/موظف).
@@ -66,8 +71,11 @@ else
   exit 1
 fi
 
-echo "== clearing old build cache =="
+echo "== installing dependencies (batch 18 added exceljs as a new package) =="
 cd /opt/clinic-app
+npm install
+
+echo "== clearing old build cache =="
 rm -rf .next
 
 echo "== rebuilding app (next start serves a pre-built .next - without this step the new"
