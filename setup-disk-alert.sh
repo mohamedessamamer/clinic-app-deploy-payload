@@ -1,20 +1,22 @@
 #!/bin/bash
 # سكريبت صيانة — تنبيه تلقائي على الإيميل لو مساحة القرص قربت تخلص.
 #
-# بيستخدم خدمة ntfy.sh المجانية بس كـ"ساعي بريد" بس — من غير أي تسجيل حساب
-# أو إعداد SMTP بتاعك — وبيطلب منها توصّل التنبيه لإيميلك مباشرة (خاصية
-# مدمجة في ntfy.sh نفسها، مش سيرفر إيميل منفصل). يعني النتيجة النهائية:
-# إيميل عادي بيوصلك في بريدك زي أي إيميل تاني، من غير ما تحتاج تنزّل أي
-# تطبيق أو تفهم حاجة تقنية جديدة.
+# الإصدار ده بيبعت الإيميل مباشرة من حساب Gmail بتاعك (smtp.gmail.com) —
+# مش عن طريق خدمة طرف تالت زي المحاولة الأولى (ntfy.sh رفضت الإرسال لأنها
+# بتمنع الإيميلات من حسابات مجهولة من غير اشتراك مدفوع عندهم). الطريقة دي
+# أوثق وأبسط: إيميلك بيبعت لنفسه، مفيش وسيط.
 #
-# الإيميل الافتراضي المستخدم هنا: mohamedessamamer@gmail.com (إيميل حسابك).
-# لو عايز إيميل مختلف (مثلاً إيميل مخصص للعيادة)، شغّل السكريبت وبعده مسافة
-# الإيميل المطلوب، مثال:
-#   bash setup-disk-alert.sh clinic-admin@example.com
+# قبل ما تشغّل السكريبت ده، خطوتين على حساب Google بتاعك (مرة واحدة بس):
+#   1) فعّل "التحقق بخطوتين" لو مش مفعّل أصلاً:
+#      https://myaccount.google.com/security
+#   2) اعمل "App Password" (كلمة سر تطبيق مخصصة، مش كلمة سر Gmail العادية):
+#      https://myaccount.google.com/apppasswords
+#      اختار اسم زي "clinic-server"، واحفظ الكود المكوّن من 16 حرف اللي هيطلعلك.
+#      (ده آمن — كلمة سر مخصصة للاستخدام ده بس، تقدر تسحبها في أي وقت من غير
+#      ما تأثر على حسابك الأساسي أو أي حاجة تانية).
 #
-# الافتراضي: بيفحص المساحة يوميًا الساعة 9 الصبح. إيميل "تحذير" لو الاستخدام
-# عدى 80%، وإيميل "خطر" لو عدى 90%. لو المساحة عادية مفيش أي إيميل بيتبعت
-# خالص (مفيش إزعاج يومي).
+# لما يبقى معاك الكود ده، شغّل السكريبت — هيطلب منك تلصقه في نفس الترمينال.
+# الكود ده بيتكتب على السيرفر نفسه بس (مش بيتبعت لأي حد تاني).
 #
 # Run as: bash setup-disk-alert.sh [email]
 set -e
@@ -22,34 +24,51 @@ set -e
 EMAIL="${1:-mohamedessamamer@gmail.com}"
 APP_DIR="/opt/clinic-app"
 SCRIPT_PATH="$APP_DIR/scripts/disk-alert.sh"
-TOPIC_FILE="$APP_DIR/scripts/.ntfy-topic"
 
 mkdir -p "$APP_DIR/scripts"
 
-# توليد اسم موضوع (topic) عشوائي طويل غير متوقع — مرة واحدة بس، وبيتحفظ عشان
-# يفضل ثابت في أي تشغيل تاني للسكريبت ده. مش مهم تحفظه أو تستخدمه بنفسك —
-# هو بس وسيط داخلي بين السيرفر وخدمة ntfy.sh، والتنبيه الفعلي بيوصلك إيميل.
-if [ -f "$TOPIC_FILE" ]; then
-  TOPIC=$(cat "$TOPIC_FILE")
-else
-  RAND=$(head -c 16 /dev/urandom | md5sum | cut -c1-12)
-  TOPIC="clinic-app-disk-$RAND"
-  echo "$TOPIC" > "$TOPIC_FILE"
+echo "== تثبيت msmtp (عميل إرسال إيميل خفيف) =="
+apt-get update -qq
+apt-get install -y msmtp ca-certificates >/dev/null
+
+echo ""
+echo "الصق الـ App Password اللي عملته من https://myaccount.google.com/apppasswords (16 حرف، من غير مسافات) واضغط Enter:"
+read -rs APP_PASSWORD
+echo ""
+
+if [ -z "$APP_PASSWORD" ]; then
+  echo "== لم يتم إدخال أي كود — ملغي. شغّل السكريبت تاني لما يبقى الكود جاهز =="
+  exit 1
 fi
+
+cat > /etc/msmtprc <<EOF
+defaults
+auth on
+tls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+
+account clinic-alert
+host smtp.gmail.com
+port 587
+from $EMAIL
+user $EMAIL
+password $APP_PASSWORD
+
+account default : clinic-alert
+EOF
+chmod 600 /etc/msmtprc
 
 cat > "$SCRIPT_PATH" <<EOF
 #!/bin/bash
-TOPIC="$TOPIC"
 EMAIL="$EMAIL"
 USAGE=\$(df / --output=pcent | tail -1 | tr -dc '0-9')
+send_mail() {
+  printf "Subject: %s\nTo: %s\n\n%s\n" "\$1" "\$EMAIL" "\$2" | msmtp "\$EMAIL"
+}
 if [ "\$USAGE" -ge 90 ]; then
-  curl -s -H "Title: خطر - مساحة سيرفر عيادتي شارفت تخلص" -H "Priority: urgent" -H "Email: \$EMAIL" \\
-    -d "استخدام القرص وصل \${USAGE}% — النظام ممكن يوقف عن العمل. نظّف باك أب قديم (cleanup-old-backups.sh) أو زوّد المساحة دلوقتي." \\
-    "https://ntfy.sh/\$TOPIC" > /dev/null
+  send_mail "خطر - مساحة سيرفر عيادتي شارفت تخلص (\${USAGE}%)" "استخدام القرص وصل \${USAGE}% — النظام ممكن يوقف عن العمل. نظّف باك أب قديم (cleanup-old-backups.sh) أو زوّد المساحة دلوقتي."
 elif [ "\$USAGE" -ge 80 ]; then
-  curl -s -H "Title: تنبيه - مساحة سيرفر عيادتي قربت" -H "Priority: high" -H "Email: \$EMAIL" \\
-    -d "استخدام القرص وصل \${USAGE}% — راجع المساحة قريب قبل ما توصل لمشكلة." \\
-    "https://ntfy.sh/\$TOPIC" > /dev/null
+  send_mail "تنبيه - مساحة سيرفر عيادتي قربت (\${USAGE}%)" "استخدام القرص وصل \${USAGE}% — راجع المساحة قريب قبل ما توصل لمشكلة."
 fi
 EOF
 chmod +x "$SCRIPT_PATH"
@@ -61,14 +80,13 @@ if [ ! -f "$CRON_FILE" ] || ! grep -qF "$SCRIPT_PATH" "$CRON_FILE" 2>/dev/null; 
   chmod 644 "$CRON_FILE"
 fi
 
-echo "== تم التثبيت =="
-echo "الإيميل اللي هيوصله التنبيه: $EMAIL"
-echo ""
-echo "== بنبعتلك إيميل تجريبي دلوقتي عشان تتأكد إنه شغال (راجع الإيميل، وممكن يوصل صندوق سبام أول مرة) =="
-curl -s -H "Title: تجربة - إشعارات مساحة القرص شغالة" -H "Priority: default" -H "Email: $EMAIL" \
-  -d "لو وصلك الإيميل ده، يبقى نظام تنبيه مساحة القرص اترّكب صح. مش هيتبعتلك تاني إلا لو المساحة قربت تخلص فعلاً (80% أو أكتر)." \
-  "https://ntfy.sh/$TOPIC" > /dev/null
-echo "== تم إرسال الإيميل التجريبي — راجع بريدك (وصندوق السبام لو مش لاقيه) =="
+echo "== تم التثبيت — بنبعتلك إيميل تجريبي دلوقتي =="
+if printf "Subject: تجربة - إشعارات مساحة القرص شغالة\nTo: %s\n\nلو وصلك الإيميل ده، يبقى نظام تنبيه مساحة القرص اترّكب صح. مش هيتبعتلك تاني إلا لو المساحة قربت تخلص فعلاً (80%% أو أكتر).\n" "$EMAIL" | msmtp "$EMAIL"; then
+  echo "== تم إرسال الإيميل التجريبي بنجاح — راجع بريدك (وصندوق السبام لو مش لاقيه) =="
+else
+  echo "== فيه مشكلة في الإرسال — تأكد إن الـ App Password اتنسخ صح (16 حرف من غير مسافات) وشغّل السكريبت تاني =="
+fi
+
 echo ""
 echo "الحالة الحالية لمساحة القرص:"
 df -h /
