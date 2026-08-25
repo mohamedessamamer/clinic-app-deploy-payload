@@ -32,14 +32,35 @@ apt-get update -qq
 apt-get install -y msmtp ca-certificates >/dev/null
 
 echo ""
-echo "الصق الـ App Password اللي عملته من https://myaccount.google.com/apppasswords (16 حرف، من غير مسافات) واضغط Enter:"
-read -rs APP_PASSWORD
+echo "ملحوظة: ترمينال Hetzner Console معروف إنه أحيانًا بيبهدل النصوص الملصوقة الطويلة"
+echo "(بيحذف حروف منها من غير ما تلاحظ). عشان كده هنعرضلك الكود اللي اتلصق فعليًا"
+echo "بعد ما تلصقه، تتأكد إنه سليم قبل ما نكمل — مش هيتبعت لأي حد، بيتكتب على"
+echo "السيرفر نفسه بس."
 echo ""
+while true; do
+  echo "الصق الـ App Password اللي عملته من https://myaccount.google.com/apppasswords واضغط Enter:"
+  echo "(ينفع تلصقه بالمسافات اللي جوجل بيوريهولك بيها — هننضفها تلقائي)"
+  read -r APP_PASSWORD_RAW
+  APP_PASSWORD="${APP_PASSWORD_RAW// /}"
 
-if [ -z "$APP_PASSWORD" ]; then
-  echo "== لم يتم إدخال أي كود — ملغي. شغّل السكريبت تاني لما يبقى الكود جاهز =="
-  exit 1
-fi
+  if [ -z "$APP_PASSWORD" ]; then
+    echo "== مفيش حاجة اتلصقت — جرب تاني، أو دوس Ctrl+C للإلغاء =="
+    echo ""
+    continue
+  fi
+
+  echo "اللي اتلصق فعليًا (${#APP_PASSWORD} حرف بعد شيل المسافات): $APP_PASSWORD"
+  if [ "${#APP_PASSWORD}" -ne 16 ]; then
+    echo "== تحذير: الطول المفروض يكون 16 حرف بالظبط. ده ${#APP_PASSWORD} — يبقى فيه حروف ناقصة أو زيادة."
+    echo "   راجع الكود في صفحة جوجل وجرب تلصقه تاني =="
+    echo ""
+    continue
+  fi
+
+  echo "شكله سليم (16 حرف). اضغط Enter للتأكيد والمتابعة، أو Ctrl+C لو عايز تلصقه تاني."
+  read -r _confirm
+  break
+done
 
 cat > /etc/msmtprc <<EOF
 defaults
