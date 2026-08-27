@@ -26,12 +26,12 @@ curl -L -o clinic-app-ortho-v2-preview.tar.gz "https://raw.githubusercontent.com
 echo "== extracting (إضافة ملفات جديدة بس - مفيش استبدال لأي حاجة موجودة) =="
 tar -xzf clinic-app-ortho-v2-preview.tar.gz -C /opt/clinic-app
 
-echo "== verifying the new files actually landed on disk =="
-if [ -f /opt/clinic-app/src/app/prototype/ortho-chart-v2/page.tsx ] && [ -f /opt/clinic-app/src/components/prototype/OrthoChartV2.tsx ] && [ -f /opt/clinic-app/public/ortho-v2/teeth/image1.png ]; then
-  echo "OK: preview files landed."
+echo "== verifying the new files actually landed on disk (checking for the LATEST round of changes, not just any old version) =="
+if [ -f /opt/clinic-app/src/components/prototype/FollowUpsTable.tsx ] && grep -q "bulkBond" /opt/clinic-app/src/components/prototype/InteractiveToothChart.tsx 2>/dev/null && grep -q "Orthodontic chart" /opt/clinic-app/src/components/prototype/OrthoChartV2.tsx 2>/dev/null; then
+  echo "OK: latest preview files (incl. Follow ups table + English/LTR + auto-bonding) landed."
 else
-  echo "PROBLEM: the preview files did not land correctly."
-  echo "GitHub may still be serving an old tar.gz - go re-upload it (overwrite, exact same filename), wait a minute, then run this again."
+  echo "PROBLEM: an OLD/stale version of the payload landed (GitHub's raw.githubusercontent.com CDN can lag several minutes after a re-upload, even with cache-busting)."
+  echo "Fix: wait a few minutes and run this script again — no need to re-upload anything on GitHub's side."
   systemctl start clinic-app
   exit 1
 fi
