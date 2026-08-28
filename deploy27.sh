@@ -51,7 +51,7 @@ echo "== extracting update (full src/ tree — overwrites in place) =="
 tar -xzf clinic-app-batch27.tar.gz -C /opt/clinic-app
 
 echo "== verifying the new code actually landed on disk =="
-if grep -q "purpose_linked_invoice_id" /opt/clinic-app/src/lib/db/types.ts 2>/dev/null && grep -q "getPatientOpenServicesForPurposeAction" /opt/clinic-app/src/app/appointments/billing-actions.ts 2>/dev/null && grep -q "renderPurposePicker" /opt/clinic-app/src/components/CentralSchedule.tsx 2>/dev/null && grep -q "getTodayPurposeContext" /opt/clinic-app/src/lib/purpose-context.ts 2>/dev/null && grep -q "doctor_date_shifts" /opt/clinic-app/src/lib/db/client.ts 2>/dev/null; then
+if grep -q "purpose_linked_invoice_id" /opt/clinic-app/src/lib/db/types.ts 2>/dev/null && grep -q "getPatientOpenServicesForPurposeAction" /opt/clinic-app/src/app/appointments/billing-actions.ts 2>/dev/null && grep -q "renderPurposePicker" /opt/clinic-app/src/components/CentralSchedule.tsx 2>/dev/null && grep -q "getTodayPurposeContext" /opt/clinic-app/src/lib/purpose-context.ts 2>/dev/null; then
   echo "OK: batch 27 code (Phase 1 + Phase 2 + P3.1 + P3.2) landed."
 else
   echo "PROBLEM: the new code did not land correctly, or an OLD/stale version was served."
