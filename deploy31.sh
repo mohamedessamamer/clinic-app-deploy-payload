@@ -51,7 +51,13 @@ if (doctorIds.length === 0) {
   console.log("Test doctors already absent; cleanup skipped.");
 } else {
   const ids = doctorIds.map(() => "?").join(",");
-  const run = (statement) => db.prepare(statement.replaceAll(":ids", ids)).run(...doctorIds);
+  // بعض الأوامر تستخدم قائمة الأطباء أكثر من مرة. كل ظهور يتحول إلى علامات
+  // استفهام جديدة، وبالتالي يجب تكرار القيم له بدل تمريرها مرة واحدة فقط.
+  const run = (statement) => {
+    const occurrences = statement.split(":ids").length - 1;
+    const values = Array.from({ length: occurrences }, () => doctorIds).flat();
+    return db.prepare(statement.replaceAll(":ids", ids)).run(...values);
+  };
   db.transaction(() => {
     run("DELETE FROM ortho_inventory_deductions WHERE visit_id IN (SELECT id FROM ortho_visits WHERE doctor_id IN (:ids))");
     run("DELETE FROM ortho_visits WHERE doctor_id IN (:ids)");
