@@ -1,5 +1,5 @@
 #!/bin/bash
-# Clinic app — batch 39: complete orthodontic inventory, coloured elastics and inventory browser.
+# Clinic app — batch 39: complete orthodontic inventory, general consumables and inventory browser.
 set -euo pipefail
 
 APP_DIR="/opt/clinic-app"
@@ -34,6 +34,8 @@ grep -q "ColorStockDropdown" "$APP_DIR/src/components/ortho/FollowUpsTable.tsx"
 grep -q "available_in_clinical_selection" "$APP_DIR/src/lib/db/schema.sql"
 grep -q "catalog_group" "$APP_DIR/src/lib/db/schema.sql"
 grep -q "InventoryBrowser" "$APP_DIR/src/app/inventory/page.tsx"
+grep -q "seedOrthodonticInventoryCatalog" "$APP_DIR/src/lib/db/client.ts"
+grep -q "مستهلكات عامة" "$APP_DIR/src/lib/db/seed-orthodontic-inventory.ts"
 
 echo "== installing dependencies and building =="
 cd "$APP_DIR"
