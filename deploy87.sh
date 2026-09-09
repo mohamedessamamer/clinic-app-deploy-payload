@@ -4,7 +4,7 @@ set -Eeuo pipefail
 APP_DIR="/opt/clinic-app"
 SERVICE_NAME="clinic-app"
 ARCHIVE="clinic-app-batch87.tar.gz"
-ARCHIVE_SHA256="67BA7AC9AD120FAF4AB593EE176E14C2A08082D94DCD900154C17EF7E7296F38"
+ARCHIVE_SHA256="C33CC4AF4FC287F47CC270464A026BA55857E7AF679481271DE7C3C539B5B262"
 REPO_RAW="https://raw.githubusercontent.com/mohamedessamamer/clinic-app-deploy-payload/main"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/login}"
 STAMP="$(date +%Y%m%d%H%M%S)"
