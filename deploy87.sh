@@ -18,12 +18,16 @@ OLD_MOVED=0
 NEW_MOVED=0
 DATA_MOVED=0
 SUCCESS=0
+FAIL_REASON=""
 
 cleanup() {
   local status=$?
   trap - EXIT
   if (( status != 0 && SUCCESS == 0 )); then
     echo "Deploy failed; restoring the previous release." >&2
+    if [[ -n "$FAIL_REASON" ]]; then
+      echo "Reason: $FAIL_REASON" >&2
+    fi
     if (( APP_STOPPED == 1 || NEW_MOVED == 1 )); then
       systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
     fi
@@ -50,22 +54,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-  echo "Run this script as root." >&2
+fail() {
+  FAIL_REASON="$1"
+  echo "ERROR: $1" >&2
   exit 1
+}
+
+require_file() {
+  [[ -f "$1" ]] || fail "expected file is missing from the extracted archive: $1"
+}
+
+require_absent() {
+  [[ ! -e "$1" ]] || fail "unexpected file/dir found in the extracted archive (should have been removed): $1"
+}
+
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+  fail "Run this script as root."
 fi
 
 for command in curl sha256sum tar npm systemctl; do
-  command -v "$command" >/dev/null 2>&1 || {
-    echo "Missing required command: $command" >&2
-    exit 1
-  }
+  command -v "$command" >/dev/null 2>&1 || fail "Missing required command: $command"
 done
 
-[[ -d "$APP_DIR/data" ]] || {
-  echo "Missing persistent data directory: $APP_DIR/data" >&2
-  exit 1
-}
+[[ -d "$APP_DIR/data" ]] || fail "Missing persistent data directory: $APP_DIR/data"
 
 if [[ -f "$APP_DIR/.env.production.local" ]]; then
   ENV_FILE="$APP_DIR/.env.production.local"
@@ -74,8 +85,7 @@ elif [[ -f "$APP_DIR/.env.production" ]]; then
   ENV_FILE="$APP_DIR/.env.production"
   ENV_NAME=".env.production"
 else
-  echo "Missing .env.production.local or .env.production in $APP_DIR" >&2
-  exit 1
+  fail "Missing .env.production.local or .env.production in $APP_DIR"
 fi
 
 required_env=(
@@ -90,10 +100,7 @@ required_env=(
   NEXT_PUBLIC_WHATSAPP_CONFIG_ID
 )
 for key in "${required_env[@]}"; do
-  grep -Eq "^${key}=.+$" "$ENV_FILE" || {
-    echo "Missing or empty environment variable: $key in $ENV_FILE" >&2
-    exit 1
-  }
+  grep -Eq "^${key}=.+$" "$ENV_FILE" || fail "Missing or empty environment variable: $key in $ENV_FILE"
 done
 
 if ! command -v make >/dev/null 2>&1; then
@@ -101,62 +108,78 @@ if ! command -v make >/dev/null 2>&1; then
   apt-get install -y build-essential
 fi
 
-echo "== downloading and verifying release =="
-curl --fail --location --output "$TEMP_DIR/$ARCHIVE" "$REPO_RAW/$ARCHIVE?cachebust=$(date +%s)"
-printf '%s  %s\n' "$ARCHIVE_SHA256" "$TEMP_DIR/$ARCHIVE" | sha256sum --check --status
+echo "== downloading release =="
+curl --fail --location --output "$TEMP_DIR/$ARCHIVE" "$REPO_RAW/$ARCHIVE?cachebust=$(date +%s)" \
+  || fail "Failed to download $ARCHIVE from $REPO_RAW (check the file was pushed to GitHub with that exact name)."
+echo "Downloaded: $(du -h "$TEMP_DIR/$ARCHIVE" | cut -f1) -> $TEMP_DIR/$ARCHIVE"
 
+echo "== verifying checksum =="
+ACTUAL_SHA256="$(sha256sum "$TEMP_DIR/$ARCHIVE" | awk '{print toupper($1)}')"
+EXPECTED_SHA256="$(echo "$ARCHIVE_SHA256" | tr '[:lower:]' '[:upper:]')"
+echo "Expected: $EXPECTED_SHA256"
+echo "Actual:   $ACTUAL_SHA256"
+if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
+  fail "SHA256 mismatch on $ARCHIVE. The file on GitHub does not match the expected release (re-upload it, or this deploy87.sh is out of date)."
+fi
+echo "Checksum OK."
+
+echo "== checking archive paths are safe =="
 if tar -tzf "$TEMP_DIR/$ARCHIVE" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
-  echo "Archive contains an unsafe path." >&2
-  exit 1
+  fail "Archive contains an unsafe path (absolute path or ../ traversal)."
 fi
 
-tar -xzf "$TEMP_DIR/$ARCHIVE" -C "$STAGE_DIR"
-test -f "$STAGE_DIR/package-lock.json"
-test -f "$STAGE_DIR/src/app/api/patient-files/upload/route.ts"
-test -f "$STAGE_DIR/src/lib/patient-file-upload.ts"
-test -f "$STAGE_DIR/src/components/AddImageGroupForm.tsx"
-test -f "$STAGE_DIR/src/components/ortho/OrthoAddImageGroupForm.tsx"
-test ! -e "$STAGE_DIR/src/lib/image-compress.ts"
-test -f "$STAGE_DIR/src/app/api/hr-documents/upload/route.ts"
-test -f "$STAGE_DIR/src/app/hr/page.tsx"
-test -f "$STAGE_DIR/src/app/hr/actions.ts"
-test -f "$STAGE_DIR/src/components/HrWorkspace.tsx"
-test -f "$STAGE_DIR/src/components/HrDocumentUploader.tsx"
-test -f "$STAGE_DIR/src/components/HrPayrollTable.tsx"
-test -f "$STAGE_DIR/src/lib/hr-payroll.ts"
-test -f "$STAGE_DIR/src/lib/hr-payroll-math.ts"
-test -f "$STAGE_DIR/src/components/AttendanceQueue.tsx"
-test -f "$STAGE_DIR/src/components/ChatSoundPicker.tsx"
-test -f "$STAGE_DIR/src/components/WhatsAppTomorrowSender.tsx"
-test -f "$STAGE_DIR/src/components/WhatsAppAutomationRules.tsx"
-test -f "$STAGE_DIR/src/components/PatientReviewForm.tsx"
-test -f "$STAGE_DIR/src/components/PatientReviewReport.tsx"
-test -f "$STAGE_DIR/src/components/WhatsAppManualTemplates.tsx"
-test -f "$STAGE_DIR/src/components/WhatsAppOperationalReports.tsx"
-test -f "$STAGE_DIR/src/components/BrowserNotificationPrompt.tsx"
-test -f "$STAGE_DIR/src/lib/patient-review.ts"
-test -f "$STAGE_DIR/src/lib/whatsapp/client-url.ts"
-test -f "$STAGE_DIR/src/app/appointment/manage/[token]/page.tsx"
-test -f "$STAGE_DIR/src/app/appointment-reminders/report-actions.ts"
-test -f "$STAGE_DIR/src/app/whatsapp/automation-actions.ts"
-test -f "$STAGE_DIR/src/app/review/[token]/page.tsx"
-test -f "$STAGE_DIR/src/app/api/whatsapp/webhook/route.ts"
-test -f "$STAGE_DIR/src/instrumentation.ts"
-test -f "$STAGE_DIR/public/premier-whatsapp-logo.png"
+echo "== extracting and checking expected files =="
+tar -xzf "$TEMP_DIR/$ARCHIVE" -C "$STAGE_DIR" || fail "Failed to extract $ARCHIVE (corrupt archive?)."
+echo "Extracted archive top-level entries:"
+ls -A "$STAGE_DIR" | sed 's/^/  /'
+
+require_file "$STAGE_DIR/package-lock.json"
+require_file "$STAGE_DIR/src/app/api/patient-files/upload/route.ts"
+require_file "$STAGE_DIR/src/lib/patient-file-upload.ts"
+require_file "$STAGE_DIR/src/components/AddImageGroupForm.tsx"
+require_file "$STAGE_DIR/src/components/ortho/OrthoAddImageGroupForm.tsx"
+require_absent "$STAGE_DIR/src/lib/image-compress.ts"
+require_file "$STAGE_DIR/src/app/api/hr-documents/upload/route.ts"
+require_file "$STAGE_DIR/src/app/hr/page.tsx"
+require_file "$STAGE_DIR/src/app/hr/actions.ts"
+require_file "$STAGE_DIR/src/components/HrWorkspace.tsx"
+require_file "$STAGE_DIR/src/components/HrDocumentUploader.tsx"
+require_file "$STAGE_DIR/src/components/HrPayrollTable.tsx"
+require_file "$STAGE_DIR/src/lib/hr-payroll.ts"
+require_file "$STAGE_DIR/src/lib/hr-payroll-math.ts"
+require_file "$STAGE_DIR/src/components/AttendanceQueue.tsx"
+require_file "$STAGE_DIR/src/components/ChatSoundPicker.tsx"
+require_file "$STAGE_DIR/src/components/WhatsAppTomorrowSender.tsx"
+require_file "$STAGE_DIR/src/components/WhatsAppAutomationRules.tsx"
+require_file "$STAGE_DIR/src/components/PatientReviewForm.tsx"
+require_file "$STAGE_DIR/src/components/PatientReviewReport.tsx"
+require_file "$STAGE_DIR/src/components/WhatsAppManualTemplates.tsx"
+require_file "$STAGE_DIR/src/components/WhatsAppOperationalReports.tsx"
+require_file "$STAGE_DIR/src/components/BrowserNotificationPrompt.tsx"
+require_file "$STAGE_DIR/src/lib/patient-review.ts"
+require_file "$STAGE_DIR/src/lib/whatsapp/client-url.ts"
+require_file "$STAGE_DIR/src/app/appointment/manage/[token]/page.tsx"
+require_file "$STAGE_DIR/src/app/appointment-reminders/report-actions.ts"
+require_file "$STAGE_DIR/src/app/whatsapp/automation-actions.ts"
+require_file "$STAGE_DIR/src/app/review/[token]/page.tsx"
+require_file "$STAGE_DIR/src/app/api/whatsapp/webhook/route.ts"
+require_file "$STAGE_DIR/src/instrumentation.ts"
+require_file "$STAGE_DIR/public/premier-whatsapp-logo.png"
 # Batch 87: admin-only permission to wipe expenses-screen test data, and
 # removal of the dead pre-HR doctor payroll code path.
-test -f "$STAGE_DIR/src/components/ClearExpensesDataButton.tsx"
-test ! -e "$STAGE_DIR/src/lib/doctor-payroll.ts"
-test ! -e "$STAGE_DIR/.env.production"
-test ! -e "$STAGE_DIR/.env.production.local"
-test ! -e "$STAGE_DIR/data"
+require_file "$STAGE_DIR/src/components/ClearExpensesDataButton.tsx"
+require_absent "$STAGE_DIR/src/lib/doctor-payroll.ts"
+require_absent "$STAGE_DIR/.env.production"
+require_absent "$STAGE_DIR/.env.production.local"
+require_absent "$STAGE_DIR/data"
+echo "All expected-file checks passed."
 cp -a "$ENV_FILE" "$STAGE_DIR/$ENV_NAME"
 
 echo "== installing and building in staging =="
 cd "$STAGE_DIR"
-npm ci
+npm ci || fail "npm ci failed in staging directory."
 mkdir -p "$STAGE_DIR/.build"
-CLINIC_DB_PATH="$STAGE_DIR/.build/clinic.db" npm run build
+CLINIC_DB_PATH="$STAGE_DIR/.build/clinic.db" npm run build || fail "npm run build failed in staging directory."
 rm -rf -- "$STAGE_DIR/.build"
 
 echo "== stopping app and backing up persistent data =="
@@ -183,10 +206,7 @@ for _ in {1..20}; do
   sleep 2
 done
 
-(( SUCCESS == 1 )) || {
-  echo "Health check failed: $HEALTHCHECK_URL" >&2
-  exit 1
-}
+(( SUCCESS == 1 )) || fail "Health check failed: $HEALTHCHECK_URL"
 
 echo "Deploy completed successfully."
 echo "Data backup: $BACKUP_DIR"
