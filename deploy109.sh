@@ -376,8 +376,9 @@ node "$STAGE_DIR/scripts/check-use-server.mjs" "$STAGE_DIR/src" \
 # --------------------------------------------------------------------------
 require_file "$STAGE_DIR/src/app/reports/patient-duration-actions.ts"
 require_file "$STAGE_DIR/src/components/PatientDurationReport.tsx"
-grep -q "view_patient_duration_report" "$STAGE_DIR/src/lib/permission-defs.ts" \
-  || fail "Batch 103: the view_patient_duration_report permission is missing from permission-defs.ts."
+# Superseded by batch 109: view_patient_duration_report was consolidated into
+# view_patient_reports (checked in the batch 109 section further down) -
+# no longer required to exist as its own key.
 grep -q "PatientDurationReport" "$STAGE_DIR/src/app/reports/page.tsx" \
   || fail "Batch 103: the patient duration report is not wired into src/app/reports/page.tsx."
 grep -q "missingAttendedAt" "$STAGE_DIR/src/app/reports/patient-duration-actions.ts" \
