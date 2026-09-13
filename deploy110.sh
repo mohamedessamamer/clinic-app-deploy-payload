@@ -738,16 +738,13 @@ grep -q "view_patient_reports" "$STAGE_DIR/src/app/reports/incomplete-checkup-ac
 grep -q "IncompleteCheckupReport" "$STAGE_DIR/src/app/reports/page.tsx" \
   || fail "Batch 109: IncompleteCheckupReport is not wired into reports/page.tsx."
 # Patients-list permission must apply to every role now - no more doctor-only
-# carve-out. Checked by intent: neither gate site may combine the permission
-# check with a role!=="doctor"/isDoctorRole short-circuit OR.
+# carve-out. Keep this check on the same source line as view_patients_list;
+# nearby doctor-specific features (such as the attendance queue in batch 110)
+# must not be mistaken for a permission bypass.
 if grep -E 'role !== "doctor".*view_patients_list|view_patients_list.*role !== "doctor"|isDoctorRole.*hasPermission.*view_patients_list|hasPermission.*view_patients_list.*isDoctorRole' \
     "$STAGE_DIR/src/app/layout.tsx" "$STAGE_DIR/src/app/patients/page.tsx" >/dev/null 2>&1; then
   fail "Batch 109: view_patients_list still looks bypassed by a doctor-only role check in layout.tsx or patients/page.tsx."
 fi
-if grep -A5 '"view_patients_list"' "$STAGE_DIR/src/app/layout.tsx" | grep -q 'role !== "doctor"'; then
-  fail "Batch 109: layout.tsx still bypasses view_patients_list for non-doctor roles."
-fi
-
 # Batch 110: schedule readability/status, full patient search, doctor future
 # schedule, queue visibility, follow-up billing repair, and medical-record filters.
 require_file "$STAGE_DIR/src/components/MedicalVisitHistory.tsx"
