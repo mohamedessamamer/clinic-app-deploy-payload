@@ -132,38 +132,38 @@ for key in SESSION_SECRET NEXT_SERVER_ACTIONS_ENCRYPTION_KEY WHATSAPP_TOKEN_ENC_
   fi
 done
 
-# Batch 112 replaces the full source tree. Refuse to overwrite any server-side
-# hotfix made after batch 110 in the files this batch changes.
-echo "== checking live batch-110 source before replacement =="
+# Batch 112 replaces the full source tree. The server is already on Batch 111,
+# so reject any hotfix made after that known release.
+echo "== checking live batch-111 source before replacement =="
 while read -r expected relative; do
   live_file="$APP_DIR/$relative"
   [[ -f "$live_file" ]] || fail "Live source file is missing: $live_file"
   actual="$(sha256sum "$live_file" | awk '{print tolower($1)}')"
   if [[ "$actual" != "$expected" ]]; then
-    fail "Live source differs from batch 110: $relative. Merge the server-side change before deploying batch 112."
+    fail "Live source differs from batch 111: $relative. Merge the server-side change before deploying batch 112."
   fi
 done <<'BATCH112_BASELINE_HASHES'
-a9dec815dd2b341efa4986844e22796ee65ff8d307896ac39b27dfe98fa7cc0e src/app/appointments/actions.ts
-578d2df4a0d8ab3239bde24d216c4859e115f3dbe82cb3d648ac328ea88a0737 src/app/appointments/billing-actions.ts
-37d637d27f43068cb2bb799c9bae6cc30e90efe8e0c757d90b187323d78e7d68 src/app/inventory/actions.ts
-e599acbdb3b5170bac0a4663f5db45ec48bee77045d7258c1b711bf648271e0f src/app/inventory/page.tsx
-7132dc4e148bc18a6098b535db284f4ac00635bee051830a3d4639cded4dc393 src/app/layout.tsx
-023b611965ff771b598a72d83d1a8c97c18e7024c701239dc14c7d5f5ac1c67f src/app/page.tsx
-526acc0e2ee7b0568e62aa69bd8ad1e883e4437a38dc73b31849e84ec216ccde src/app/patients/[id]/orthodontics/actions.ts
-f4a18fc1829b39d6f01b724a35d428a1df96a725b6c8e306002d5606e671e299 src/app/patients/[id]/orthodontics/ortho-v2-actions.ts
-56c01469600b8b2ca843384650b3ebc9312bfe54f55b4dd0a109f9d6b9c9f8ba src/app/patients/[id]/page.tsx
-46c16df333829c83700569aa32f81244f7776388890d5c8076e042cc4286a91c src/app/patients/actions.ts
-6242de86bacc9f31f40760d7096a06da8afda9c6f77199e04e8984a26799cf41 src/app/referrals/actions.ts
-7208ee609be2b91cf929c0fcc1e89dccecfea02dc583198151ba030a53e66a1f src/components/InventoryBrowser.tsx
-9b0105ce89456a7dc778a8518b26456bd2647acb2c5ea5d4bb7eb26603381245 src/components/NavBar.tsx
-03dfffc295581ea8d187a6452906d551a99977483918d896aaa1f3c72e3d6feb src/components/PatientReferrals.tsx
-916699b431b1be956f7c8c889d03f5ec046ee0f82c58e49116545f4dfb77630b src/lib/db/client.ts
-36633d12d4310f1f88d591608f7aa9e5afbc2e1831c8fad3695123fa08fd1489 src/lib/db/schema.sql
-69be04ab56c8734b78ab5e2e9b37e697e15e8d952c683f19258d05dbad02f78b src/lib/db/types.ts
-96eef00899ddebb1cd6ae1ebda0ca00d905027cb0654fb23b8262088b6e325d1 src/lib/inventory-stock.ts
-570ef616758d72c8fb717bef755a5ec4c87b8b85e46451ae0993488a6b55b609 src/lib/ortho/bracket-stock.ts
-eb8db082b0c7d93fbc29e2e1c1adf6efc5e7e39f171631fc6a6dbe7410dbabf9 src/lib/permission-defs.ts
-9367d9b8068590d2a8f45d2e9451fe3afde75a097db303c75761c5ece9642c28 src/lib/settings.ts
+4ba57274fbfd72ba02564dbc4ba668aa73c8791badfb2810819e13ad7b4c67bb src/app/appointments/actions.ts
+df9d5894ac5c10198f42cc6606ff069d5c1dbbd8929d867a1803a3f0a3af11c6 src/app/appointments/billing-actions.ts
+5d0ca69e306c8b387185e9217b41a7930bf3c29ae1921e47048860b3a77005a6 src/app/inventory/actions.ts
+4a6267467d4d3c98eb9b5c9f17c85bec7cfd3a814e6399d651a889943f601ac6 src/app/inventory/page.tsx
+fb83644ac952ea262d7e40de2dad3811a16fba334518cac32d001c9485f51b91 src/app/layout.tsx
+4ce9f5bd02ae5e8822b79344ceefc0f2e9405871d61ab66aee8e69756b645294 src/app/page.tsx
+6951dc3949505a245dd50a5b7b79bf094c50ec674a342edc3f047eac117e0271 src/app/patients/[id]/orthodontics/actions.ts
+479d47957a7ad538961aa4fc28aee5d17b7ef0f02add353f93a2776b18177769 src/app/patients/[id]/orthodontics/ortho-v2-actions.ts
+f960dbc34ab357a5bb33d5955113d1dc051adbd868715d5f5fafd8d06acd2c2c src/app/patients/[id]/page.tsx
+46149d4ddcbfbf64e92661dac662f55d3e27c397a223d45fc15b2e9e426523a5 src/app/patients/actions.ts
+6a9233ca875b62105eaaac368deccfba537cc46544b471b56050ea4e04361de4 src/app/referrals/actions.ts
+87bf18d325258591f565e0fd61109d5bea0de54108910171fbb124875ed5cae3 src/components/InventoryBrowser.tsx
+5ff1a839cbb3e4c7fb4a8b13cd3694a6ebc1a0c2ee038df7bfafa4479317b61e src/components/NavBar.tsx
+348bbeef26e2792fbba72ae57562905a12ee3453870e1ee673207f3e555580f4 src/components/PatientReferrals.tsx
+d75b8a26621653e1271a0112880c06ebf6d79891057a2054744fadf8207f0e4a src/lib/db/client.ts
+2c157dac1c79c8d7129821ec39e38cfa9a4f4e3dcb5b040b085c3f449eca2314 src/lib/db/schema.sql
+531cfad147216b5ec413bdadc8ab09a4895072a64579b6d7e05c26e5c8bf03fe src/lib/db/types.ts
+f9e048e2f79b6e92befb2c83b6dfdcd0b1e402ad1d092097d088388a1c34c188 src/lib/inventory-stock.ts
+3cfb6cdbf4a88065cdf86c11221c4c2c4332058c54fffb7c1c59ac49a0c0df9f src/lib/ortho/bracket-stock.ts
+f305a22a043f980513d80ab1d89bc649c80d94234b3060142a2505568d3901e1 src/lib/permission-defs.ts
+c2fbf643eb8a92c3a7aa3198a851e63ff7ad29fd18a7bf0b3bed9fb72c8ccdc0 src/lib/settings.ts
 BATCH112_BASELINE_HASHES
 for relative in \
   src/app/tasks/actions.ts \
@@ -175,7 +175,7 @@ for relative in \
   src/lib/inventory-control.ts \
   src/lib/ortho/tube-stock.ts \
   src/lib/tasks.ts; do
-  [[ ! -e "$APP_DIR/$relative" ]] || fail "Live source already contains Batch 112 file: $relative. Merge that server-side change first."
+  [[ -e "$APP_DIR/$relative" ]] || fail "Live source is missing known Batch 111 file: $relative. Deploy Batch 111 before Batch 112."
 done
 
 if ! command -v make >/dev/null 2>&1; then
