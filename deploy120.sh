@@ -415,14 +415,18 @@ grep -q "patientQuery" "$STAGE_DIR/src/app/reports/patient-duration-actions.ts" 
 grep -q "patientQuery" "$STAGE_DIR/src/components/PatientDurationReport.tsx" \
   || fail "Batch 103: the patient search input is missing from PatientDurationReport.tsx."
 
-# The ortho/referrals operational-report panel in the patients tab now opens
-# expanded by default (it's already one click deep inside that tab, so a
-# second collapsed layer on top was redundant).
+# The patient reports navigation was redesigned in Batch 120. Each report has
+# its own sub-navigation item, so the old combined ortho/referrals panel is no
+# longer present. Verify the new structure before accepting the release.
 grep -q "defaultOpen" "$STAGE_DIR/src/components/WhatsAppOperationalReports.tsx" \
   || fail "Batch 103: the defaultOpen prop is missing from WhatsAppOperationalReports.tsx."
-if ! grep -q 'only={\["ortho", "referrals"\]} defaultOpen' "$STAGE_DIR/src/app/reports/page.tsx"; then
-  fail "Batch 103: the patients-tab operational reports panel is not set to open by default in src/app/reports/page.tsx."
-fi
+require_file "$STAGE_DIR/src/components/ReportSubnav.tsx"
+grep -q "ReportSubnav" "$STAGE_DIR/src/app/reports/page.tsx" \
+  || fail "Batch 120: the patient reports sub-navigation is not wired into src/app/reports/page.tsx."
+for report_key in 'key: "ortho"' 'key: "referrals"' 'key: "duration"' 'key: "incomplete"'; do
+  grep -q "$report_key" "$STAGE_DIR/src/app/reports/page.tsx" \
+    || fail "Batch 120: a required patient report navigation item is missing: $report_key"
+done
 
 # Renamed panel titles: the generic "التقارير التشغيلية عند الطلب" heading is
 # gone from both places it used to say it - the financial tab now names the
@@ -431,8 +435,10 @@ grep -q "title?: string" "$STAGE_DIR/src/components/WhatsAppOperationalReports.t
   || fail "Batch 103: the title prop is missing from WhatsAppOperationalReports.tsx."
 grep -q 'only={\["unpaid"\]} title="تم بدون دفع"' "$STAGE_DIR/src/app/reports/page.tsx" \
   || fail "Batch 103: the financial-tab panel is not titled 'تم بدون دفع' in src/app/reports/page.tsx."
-grep -q 'title="تقرير المتابعات والتحويلات"' "$STAGE_DIR/src/app/reports/page.tsx" \
-  || fail "Batch 103: the patients-tab panel is not titled 'تقرير المتابعات والتحويلات' in src/app/reports/page.tsx."
+grep -q 'title="متابعة تقويم متأخرة"' "$STAGE_DIR/src/app/reports/page.tsx" \
+  || fail "Batch 120: the overdue orthodontic follow-up report title is missing."
+grep -q 'title="التحويلات"' "$STAGE_DIR/src/app/reports/page.tsx" \
+  || fail "Batch 120: the referrals report title is missing."
 
 # --------------------------------------------------------------------------
 # Batch 103: patient-name autocomplete on the duration report (type-to-search
