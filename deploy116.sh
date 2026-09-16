@@ -132,33 +132,34 @@ for key in SESSION_SECRET NEXT_SERVER_ACTIONS_ENCRYPTION_KEY WHATSAPP_TOKEN_ENC_
   fi
 done
 
-# Batch 115 replaces the full source tree. The server is already on Batch 114,
-# so reject any hotfix made to the files this batch updates.
-echo "== checking live batch-114 source before replacement =="
+# Batch 116 replaces the full source tree. The server is already on Batch 115,
+# so reject any hotfix made to files this batch updates.
+echo "== checking live batch-115 source before replacement =="
 while read -r expected relative; do
   live_file="$APP_DIR/$relative"
   [[ -f "$live_file" ]] || fail "Live source file is missing: $live_file"
   actual="$(sha256sum "$live_file" | awk '{print tolower($1)}')"
   if [[ "$actual" != "$expected" ]]; then
-    fail "Live source differs from batch 114: $relative. Merge the server-side change before deploying batch 115."
+    fail "Live source differs from batch 115: $relative. Merge the server-side change before deploying batch 116."
   fi
-done <<'BATCH115_BASELINE_HASHES'
-02761dd2bbc93f1e4741eab31b10681e910d76700b2392412c5adfa5efc11d65 src/lib/db/schema.sql
-3198f789a138e87f7cc03e5b175bfaaafd140a0374edc5140c4ff6ca2da67b74 src/lib/db/types.ts
-274fe57df7f3a73f2d6bf8bb19e733b9454d1d340daa3e9ae93b0db42e6382e3 src/lib/db/client.ts
-d6955ea58d7b8221c42eb29913a4fae0432b9c46059a7de64ca5e391504b134c src/app/globals.css
-4ba57274fbfd72ba02564dbc4ba668aa73c8791badfb2810819e13ad7b4c67bb src/app/appointments/actions.ts
-159433a6c34e619fbc55262b26e4f0ee96226707cf8eba56f232c35f35664f92 src/app/patients/[id]/actions.ts
-7a4c45878086ab2721b5449e3889d8f4defc3c86abcd4db03578d3c2d6dc3cda src/app/patients/[id]/billing/actions.ts
-96ac2746b4584541064b65e4b9ca48ad0194f107addad695432aec868bef955f src/app/patients/page.tsx
-384da060e55a50357ce163119713cbde0ce50ca2e16212769a0063907cd7fd2c src/components/OrthodonticTubeStock.tsx
-81dfa459831be874f6f554f981be4b6234ad085e241ee85b7ac005f5b3601c7b src/lib/whatsapp/appointment-reminders.ts
-605b35ec3142022383752d8d396dc54af3ca19bcaafa1e416f7029806746af8a src/app/appointment-reminders/report-actions.ts
-1facdb4074d64a8a6a09df2067954c6b35e520f68e2a313448658da32f60a0d7 src/app/whatsapp/actions.ts
-6fe511ff8232b566567ec45ea35d8dc67b0bfb5df46f99b087475b914681df0f src/instrumentation.ts
-BATCH115_BASELINE_HASHES
-[[ ! -e "$APP_DIR/src/lib/patient-archive.ts" ]] || fail "Live source already contains patient archive logic. Merge it before deploying batch 115."
-[[ ! -e "$APP_DIR/src/components/PatientArchiveButton.tsx" ]] || fail "Live source already contains patient archive UI. Merge it before deploying batch 115."
+done <<'BATCH116_BASELINE_HASHES'
+82143c4511bc4e03693d2b34fef6e9c6ee2ec9348ee717e73e1af8e679bb2f08 src/lib/db/schema.sql
+82b3086643fb8358bb5eb82940d4360a8878ead40a838fa22345f1470471c94e src/lib/db/types.ts
+eed84055a083909fcac5083b8bcc002f914dbd50b4e2d0348b75636a84d5220a src/lib/db/client.ts
+1c6ea61cf00066156b6bacf4e59ad1315c91d6ea5f086e79a6c4c4bb5cc962b5 src/app/appointments/actions.ts
+4f4cec13089b039949d2b035a66224a84a0ebd536592fe4bba52e998f1fd74c3 src/app/front-desk/page.tsx
+1b4c32a289b72c157b052c21e2c9d0bbc61893a0105408602ef87f3138812110 src/components/CentralSchedule.tsx
+13e7a6003a2144536d232c712b95b8f5751573944d8976a48a2c27cc02108c28 src/app/globals.css
+8539c983d26e99ec2028d30f6458db80d6cd5607fba1c000d9e329486d4992d6 src/lib/permission-defs.ts
+4d6ebeaa36350bbca685a1779a32ccaea5019d8bea937e9e0899fcb8b32df0c4 src/components/AccountMenu.tsx
+6eba4315dd0e20a9a91d17e6705192e030d10f99da9d131105a4e7b401594403 src/components/NavBar.tsx
+46d2df2682f3f65008fd111d625c650b5905d13b9d3d18dad288f5f312478099 src/app/layout.tsx
+2930df4a878d3964b2851f21f5a56d3230372e91aa7345f1157d34d978ea9e5a src/app/page.tsx
+81106d91f1af7c731e0be0cfdd0767a01ea4fb7deead27f646a395286900c6df src/components/OrthodonticTubeStock.tsx
+eec5f11db42eefedb89eb033df6630d21d74be278712266cc527d9f0109b0a71 src/app/attendance-queue/actions.ts
+fdc50c9f65a4d32511dd567b035ed5f6eaebbce6c3eef5ea07326f024b520227 src/components/AttendanceQueue.tsx
+BATCH116_BASELINE_HASHES
+[[ ! -e "$APP_DIR/src/app/appointments/page.tsx" ]] || fail "Live source already contains the appointments route. Merge it before deploying batch 116."
 
 if ! command -v make >/dev/null 2>&1; then
   apt-get update
