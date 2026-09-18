@@ -5,7 +5,7 @@ cd /
 APP_DIR="/opt/clinic-app"
 SERVICE_NAME="clinic-app"
 ARCHIVE="clinic-app-batch127.tar.gz"
-ARCHIVE_SHA256="FFE4FA1A82FBBAD8D768FC67E22CD59C9AEB31DF3B92076CBAAAF12A2571F385"
+ARCHIVE_SHA256="75C46CE52A597C590232E95E8ED7E78BBF133A23847474075F0BE7A13601DB32"
 REPO_RAW="https://raw.githubusercontent.com/mohamedessamamer/clinic-app-deploy-payload/main"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/login}"
 STAMP="$(date +%Y%m%d%H%M%S)"
@@ -1049,6 +1049,25 @@ grep -q "PatientAvatar" "$STAGE_DIR/src/app/patients/[id]/billing/page.tsx" \
   || fail "Batch 127: PatientAvatar is not wired into the billing/financial page."
 
 # --------------------------------------------------------------------------
+# Regression guard for the crash the FIRST batch127 deploy attempt hit live:
+# schema.sql ran "CREATE INDEX ... ON patient_images(content_hash)"
+# unconditionally, right after a "CREATE TABLE IF NOT EXISTS patient_images"
+# that is a no-op on an existing server (the column is only added later, by
+# the migration's ALTER TABLE) - so schema.sql itself crashed with
+# "SqliteError: no such column: content_hash" on every single restart
+# (crash-loop), which is exactly why the health check saw "no response" and
+# deploy127.sh correctly rolled back. Fixed by moving that CREATE INDEX into
+# the migration itself (after the ALTER TABLE), where it already belongs for
+# every other column added post-launch. This check makes sure schema.sql
+# never regresses to doing that again for this column.
+# --------------------------------------------------------------------------
+if grep -q "CREATE INDEX IF NOT EXISTS idx_patient_images_content_hash" "$STAGE_DIR/src/lib/db/schema.sql"; then
+  fail "Batch 127: schema.sql still creates idx_patient_images_content_hash directly - this is EXACTLY the bug that crash-looped the live server on the first deploy attempt (the index runs before the column exists on an upgrade). It belongs only inside the 127_patient_image_dedupe_and_corrections migration in client.ts, after the ALTER TABLE."
+fi
+grep -q "CREATE INDEX IF NOT EXISTS idx_patient_images_content_hash" "$STAGE_DIR/src/lib/db/client.ts" \
+  || fail "Batch 127: the content_hash index is missing from the migration in client.ts."
+
+# --------------------------------------------------------------------------
 # NEW IN 127: snapshot the exact bytes we just extracted and verified, BEFORE
 # the staging build (or anything else) can touch them. This is what the
 # post-swap check further down re-verifies against, directly on the LIVE
@@ -1069,6 +1088,7 @@ POST_SWAP_VERIFY_FILES=(
   "src/app/patients/[id]/billing/page.tsx"
   "src/app/patients/[id]/images/template-actions.ts"
   "src/lib/db/client.ts"
+  "src/lib/db/schema.sql"
 )
 POST_SWAP_HASHES_FILE="$STAGE_DIR/.deploy127-expected-hashes"
 : > "$POST_SWAP_HASHES_FILE"
