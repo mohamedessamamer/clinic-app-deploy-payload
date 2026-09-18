@@ -5,7 +5,7 @@ cd /
 APP_DIR="/opt/clinic-app"
 SERVICE_NAME="clinic-app"
 ARCHIVE="clinic-app-batch124.tar.gz"
-ARCHIVE_SHA256="357CD05B56055D179D6213A56EBABAA99DBB02EAC3DC7B4ABA61B1DDF90F5B92"
+ARCHIVE_SHA256="8AD880E86A8ABBC2D9B71A3324560964E147EC5A9F6688B9155D2DD2F50E20D0"
 REPO_RAW="https://raw.githubusercontent.com/mohamedessamamer/clinic-app-deploy-payload/main"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/login}"
 STAMP="$(date +%Y%m%d%H%M%S)"
@@ -132,36 +132,34 @@ for key in SESSION_SECRET NEXT_SERVER_ACTIONS_ENCRYPTION_KEY WHATSAPP_TOKEN_ENC_
   fi
 done
 
-# Batch 124 (بيشمل دفعة 123 كمان) بيستبدل شجرة الكود كلها. السيرفر المفروض
-# لسه على Batch 122، فبنرفض أي تعديل يدوي على الملفات اللي الدفعة دي بتغيّرها.
-echo "== checking live batch-122 source before replacement =="
+# Batch 124 بيستبدل شجرة الكود كلها. السيرفر دلوقتي على Batch 123 (اتنشرت
+# بنجاح)، فبنقارن بملفات 123 للملفات اللي دفعة 124 بتغيّرها بس — أي تعديل يدوي
+# على السيرفر في الملفات دي بيوقف النشر عشان ما يتمسحش.
+echo "== checking live batch-123 source before replacement =="
 while read -r expected relative; do
   live_file="$APP_DIR/$relative"
   [[ -f "$live_file" ]] || fail "Live source file is missing: $live_file"
   actual="$(sha256sum "$live_file" | awk '{print tolower($1)}')"
   if [[ "$actual" != "$expected" ]]; then
-    fail "Live source differs from batch 122: $relative. Merge the server-side change before deploying batch 124 (batch 124 already contains batch 123)."
+    fail "Live source differs from batch 123: $relative. Merge the server-side change before deploying batch 124."
   fi
-done <<'BATCH122_BASELINE_HASHES'
+done <<'BATCH123_BASELINE_HASHES'
 5d6a60be77986e42d881577d022da2bdd5940ffbf386cb812cc53ac49856feac package-lock.json
 6b07b97b9b0212b8883a54d1c6e7f4c8aa6f5f46c5115eae8ea3794395be9cd8 package.json
 150e984c64ca707127558d1632536cf32884fea13b34ff3e19dd046f535d0ef7 src/app/api/patient-files/upload/route.ts
-ea929990fd92bc762a8da05130b139c6f53219502e03f66eb986d06ed6396a61 src/app/appointments/actions.ts
-e173ed2e3e0ae67a91f064d39f9dc5d929f1968a3b9bd1dd4d239bd72598c5a3 src/app/front-desk/page.tsx
-f57cce0a498107189c4e682e07f18bac26154ef6c26627d42504db62fdee9b16 src/app/globals.css
-a30420b93e0ab2990016c8bcaf144dfbf51db00b22c1d6d9ffa99097a0b1c8dd src/app/page.tsx
+389ccb6c4e30c894cf6bf7d344b703f2ff452333ad46bccf5d94205d71739094 src/app/globals.css
 b43a335718f53c02be57fb6e2e7e0522073f3e8b4380d3a9f74efb9a8eaae73d src/app/patients/[id]/page.tsx
 8114205247884a31be7a48783b5fcdfc29ef79350b6cf5e3580f209dbf6d6c87 src/app/settings/actions.ts
 d9ef7b743c448754a0c1ca7e6582aa17ac4c6729f931cadd2e1fb726b1118c91 src/app/settings/page.tsx
-d34deae953d05200dbaf27d50e0b368d1086c9dc8c9c68061ebb384c96ac3437 src/components/CentralSchedule.tsx
 fc6b925c71fcb4cd89afefa84c4be9e5641c116b726aeccc2e4dd1592ebe4166 src/components/ortho/OrthoAddImageGroupForm.tsx
 ece307bb7e4944eb2ce94af237169ac28eb85f968f5f11c296c9bf3e22d8b6b1 src/components/ortho/OrthoImageGallery.tsx
-8e959717940c823f1c1f9b0837c1a52c384aa9b89590792a16b5ef9d1ed97ab3 src/lib/db/client.ts
-15e33b251dad059ac0952ac0b5b3a5abaa1699258673f7f3b3f26cbc940892a9 src/lib/db/schema.sql
-f42c90cee6e74ebe5a17d6848e30c80c01a8fe446012002ed72d9277a561fe8b src/lib/db/types.ts
+3db0b28b301ff17dd8d9752493c96e53eb0a8bce9175c64fa879cc2f791f7233 src/lib/db/client.ts
+6b14430a833c1530d7697ee28ee432fbac0a64007a9794526e5f3e0878ea9d91 src/lib/db/schema.sql
+b78ac5d05a57870c9d1fcfea6d5c9f4d439c8207cb134cfeb26060b33c37f130 src/lib/db/types.ts
 12bf174fa1f2f17013397988f18df52c43e78699c0fc0ecc71ced858693f1011 src/lib/patient-file-upload.ts
 5442e8d8445d0c7dc96b4e0137e1eba4ff802b08cb52396b000bd9e422e45edf src/lib/settings.ts
-BATCH122_BASELINE_HASHES
+ecc72c22b81de77f7719f71a7212d5bcb7bc5f0eb85dab784cec366d865e8470 scripts/seed.js
+BATCH123_BASELINE_HASHES
 require_file "$APP_DIR/src/components/ReportSubnav.tsx"
 
 if ! command -v make >/dev/null 2>&1; then
@@ -913,6 +911,8 @@ require_file "$STAGE_DIR/src/components/ortho/ImageTemplateBoard.tsx"
 require_file "$STAGE_DIR/src/components/OrthoImageTemplateForm.tsx"
 require_file "$STAGE_DIR/src/app/patients/[id]/images/template-actions.ts"
 require_file "$STAGE_DIR/docs/BATCH124.md"
+awk '/INSERT INTO invoices/{print}' "$STAGE_DIR/scripts/seed.js" | grep -q "patient_id" \
+  || fail "Batch 124: scripts/seed.js still inserts an invoice without patient_id (local seeding would fail)."
 grep -q '"sharp"' "$STAGE_DIR/package.json" \
   || fail "Batch 124: sharp is not an explicit dependency (image classification needs it)."
 grep -q "node_modules/sharp" "$STAGE_DIR/package-lock.json" \
@@ -1033,6 +1033,5 @@ echo "Deploy completed successfully."
 echo "Data backup: $BACKUP_DIR"
 echo "Previous release: $PREVIOUS_DIR"
 echo
-echo "== Batch 124 (includes Batch 123) =="
-echo "Batch 123: clinic status menu, reception row, no-show/cancel confirmation, 3-minute in-clinic rule."
+echo "== Batch 124 =="
 echo "Batch 124: automatic patient-image recognition, ortho image template (configurable in settings), patient thumbnail."
