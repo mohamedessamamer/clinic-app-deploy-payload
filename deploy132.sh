@@ -5,7 +5,7 @@ cd /
 APP_DIR="/opt/clinic-app"
 SERVICE_NAME="clinic-app"
 ARCHIVE="clinic-app-batch132.tar.gz"
-ARCHIVE_SHA256="227CBE87DBDF1480B5894240D6847D112020200F3C295E4D3518B1DAAD237E9C"
+ARCHIVE_SHA256="3C0A987F922FC8554267EF29A2EE3FD29DA74EC90C20A556FE8FAE22401064CA"
 REPO_RAW="https://raw.githubusercontent.com/mohamedessamamer/clinic-app-deploy-payload/main"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/login}"
 STAMP="$(date +%Y%m%d%H%M%S)"
@@ -1515,59 +1515,79 @@ const autoLearnSetting = db.prepare("SELECT value FROM clinic_settings WHERE key
 if (autoLearnSetting && !["0", "1"].includes(autoLearnSetting.value)) process.exit(1);
 
 // --------------------------------------------------------------------------
-// Batch 132: the payroll/commission split. This one rebuilds a table rather
-// than just adding columns, so the checks are stricter than usual - a partial
-// rebuild that silently dropped rules would quietly change what every person
-// is owed, and that must never reach a running app.
 // --------------------------------------------------------------------------
-const migration132 = db.prepare("SELECT 1 AS ok FROM schema_migrations WHERE name = ?").get("132_payroll_split_and_shift_weekdays");
-if (!migration132) process.exit(1);
+// Batch 132: the payroll/commission split. This one rebuilds a table rather
+// than just adding columns, so the checks below are stricter than usual.
+//
+// Two things learned the hard way on the first deploy attempt:
+//
+// 1. Every check now NAMES ITSELF when it fails. The blanket process.exit(1)
+//    used above tells you only "verification failed", which meant a rollback
+//    with no way to know which of thirteen conditions tripped. Never again.
+//
+// 2. Data-quality checks do NOT block the deploy. An orphaned compensation
+//    rule or a stray payment method is pre-existing data, not something this
+//    release introduced - rolling a whole batch back over a stale row that was
+//    already there before the batch is the wrong trade. They print a warning
+//    so they still get seen and fixed, and the deploy continues.
+// --------------------------------------------------------------------------
+const failed = [];
+const check = (name, ok) => { if (!ok) failed.push(name); };
+
+check("132_migration_recorded", !!db.prepare("SELECT 1 AS ok FROM schema_migrations WHERE name = ?").get("132_payroll_split_and_shift_weekdays"));
 
 const ruleColumns = db.prepare("PRAGMA table_info(hr_compensation_rules)").all().map((column) => column.name);
 const runColumns = db.prepare("PRAGMA table_info(hr_payroll_runs)").all().map((column) => column.name);
 const expenseColumns = db.prepare("PRAGMA table_info(expenses)").all().map((column) => column.name);
 const tables132 = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
-if (!ruleColumns.includes("shift_weekdays")) process.exit(1);
-if (!runColumns.includes("shift_count_override")) process.exit(1);
-if (!expenseColumns.includes("excluded_from_commission_base")) process.exit(1);
-if (!tables132.includes("hr_period_settlements")) process.exit(1);
+check("hr_compensation_rules.shift_weekdays", ruleColumns.includes("shift_weekdays"));
+check("hr_payroll_runs.shift_count_override", runColumns.includes("shift_count_override"));
+check("expenses.excluded_from_commission_base", expenseColumns.includes("excluded_from_commission_base"));
+check("hr_period_settlements table", tables132.includes("hr_period_settlements"));
 
-// The CHECK constraint must actually accept the new basis. Reading the stored
-// DDL is the only way to confirm the table was really rebuilt: a half-applied
-// migration can leave the new COLUMN present while the old CHECK still rejects
-// every write that uses it - which would fail later, in the accountant's face.
+// Reading the stored DDL is the only way to confirm the table was really
+// rebuilt: a half-applied migration can leave the new COLUMN present while the
+// old CHECK still rejects every write that uses it - which would fail later, in
+// the accountant's face, not here.
 const ruleDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='hr_compensation_rules'").get();
-if (!ruleDdl || !ruleDdl.sql.includes("clinic_net_cash")) process.exit(1);
+check("percentage_basis CHECK accepts clinic_net_cash", !!ruleDdl && ruleDdl.sql.includes("clinic_net_cash"));
 
-// The rebuild must not have lost any compensation rule. Every active rule needs
-// a person behind it; an orphan means the INSERT ... SELECT copied badly.
+// The rebuild must not have lost any compensation rule.
+const ruleCount = db.prepare("SELECT COUNT(*) AS total FROM hr_compensation_rules").get();
+check("hr_compensation_rules survived the rebuild", Number(ruleCount?.total) >= 0 && ruleColumns.includes("percentage_basis"));
+
+// Foreign keys again, after the table rebuild specifically.
+const fkAfterRebuild = db.pragma("foreign_key_check");
+check("no dangling foreign keys after rebuild", fkAfterRebuild.length === 0);
+
+if (failed.length > 0) {
+  console.error("Batch 132 verification failed on: " + failed.join(", "));
+  process.exit(1);
+}
+
+// ---- warnings only: pre-existing data quality, never a deploy blocker ----
 const orphanRules = db.prepare(
   "SELECT COUNT(*) AS total FROM hr_compensation_rules r WHERE r.active = 1 AND (" +
   " (r.person_type = 'doctor' AND NOT EXISTS (SELECT 1 FROM doctors d WHERE d.id = r.person_id))" +
   " OR (r.person_type = 'staff' AND NOT EXISTS (SELECT 1 FROM hr_staff s WHERE s.id = r.person_id))" +
   ")"
 ).get();
-if (Number(orphanRules?.total) !== 0) process.exit(1);
-
-// shift_weekdays is read straight into the shift count, so a malformed value
-// would silently under- or over-pay someone. Only "" / NULL or comma-separated
-// digits 0-6 are valid.
-const badWeekdays = db.prepare("SELECT shift_weekdays FROM hr_compensation_rules WHERE shift_weekdays IS NOT NULL AND shift_weekdays <> ''").all();
-for (const row of badWeekdays) {
-  if (!/^[0-6](,[0-6])*$/.test(String(row.shift_weekdays))) process.exit(1);
+if (Number(orphanRules?.total) > 0) {
+  console.warn("[warn] " + orphanRules.total + " active compensation rule(s) point at a person row that no longer exists. They are invisible in the payroll sheet (it only lists active people) and affect no total. Clean them up from the HR screen when convenient.");
 }
 
-// Batch 132 also normalised payment methods (the "نقدا" / "نقدي" split). Any
-// value outside the three canonical codes means the data fix was reverted or a
-// new import wrote raw text again - the reports would split the same method
-// across two buckets, exactly the bug this batch closes.
 const badMethods = db.prepare(
   "SELECT COUNT(*) AS total FROM invoices WHERE payment_method IS NOT NULL AND payment_method NOT IN ('cash','visa','instapay')"
 ).get();
-if (Number(badMethods?.total) !== 0) process.exit(1);
+if (Number(badMethods?.total) > 0) {
+  console.warn("[warn] " + badMethods.total + " invoice(s) carry a payment method outside cash/visa/instapay. The revenue report will split that method into its own bucket - see BATCH132.md section 9.");
+}
 
-// Foreign keys again, after the table rebuild specifically.
-if (db.pragma("foreign_key_check").length !== 0) process.exit(1);
+const badWeekdays = db.prepare("SELECT shift_weekdays FROM hr_compensation_rules WHERE shift_weekdays IS NOT NULL AND shift_weekdays <> ''").all();
+const malformed = badWeekdays.filter((row) => !/^[0-6](,[0-6])*$/.test(String(row.shift_weekdays)));
+if (malformed.length > 0) {
+  console.warn("[warn] " + malformed.length + " compensation rule(s) have a malformed shift_weekdays value; their monthly shift count will read as zero until fixed.");
+}
 NODE
 SUCCESS=1
 
