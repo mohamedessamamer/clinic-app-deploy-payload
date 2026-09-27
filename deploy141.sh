@@ -69,6 +69,14 @@ require_file() {
   [[ -f "$1" ]] || fail "expected file is missing from the extracted archive: $1"
 }
 
+# Batch 141 (deploy fix): "cmd | grep -q" under "set -o pipefail" is flaky -
+# grep -q exits on the first match, the writer (awk/sed/tar) then gets SIGPIPE
+# and the whole pipeline reports failure even though the pattern WAS found.
+# qgrep reads its whole input, so the pipeline result only reflects the match.
+qgrep() {
+  grep "$@" >/dev/null
+}
+
 require_absent() {
   [[ ! -e "$1" ]] || fail "unexpected file/dir found in the extracted archive (should have been removed): $1"
 }
@@ -187,7 +195,7 @@ fi
 echo "Checksum OK."
 
 echo "== checking archive paths are safe =="
-if tar -tzf "$TEMP_DIR/$ARCHIVE" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+if tar -tzf "$TEMP_DIR/$ARCHIVE" | qgrep -E '(^/|(^|/)\.\.(/|$))'; then
   fail "Archive contains an unsafe path (absolute path or ../ traversal)."
 fi
 
@@ -312,7 +320,7 @@ fi
 # الأكشنات اللي كانت من غير أي فحص صلاحية لازم تبقى محروسة دلوقتي.
 for guarded in saveSettingsAction addServiceAction updateServiceAction; do
   if ! grep -A 8 "^export async function ${guarded}(" "$STAGE_DIR/src/app/settings/actions.ts" \
-      | grep -q 'session.role !== "admin"'; then
+      | qgrep 'session.role !== "admin"'; then
     fail "Batch 103: ${guarded} still has no admin check in src/app/settings/actions.ts."
   fi
 done
@@ -509,7 +517,7 @@ grep -q "CLINIC_TIMEZONE" "$STAGE_DIR/src/components/PatientDurationReport.tsx" 
 # Checked on lines that aren't comments - the fix's own explanatory comment
 # names toISOString() by way of describing the bug it replaces, which would
 # false-positive a plain text search.
-if grep -vE '^\s*//' "$STAGE_DIR/src/components/PatientDurationReport.tsx" | grep -q "toISOString"; then
+if grep -vE '^\s*//' "$STAGE_DIR/src/components/PatientDurationReport.tsx" | qgrep "toISOString"; then
   fail "Batch 103: PatientDurationReport.tsx still uses toISOString() for a date - that reads UTC, not clinic-local time."
 fi
 
@@ -658,7 +666,7 @@ done
 # "suppliers" - checked by intent (the action body references the suppliers
 # expense category), not by a single string.
 awk '/^export async function recordSupplierInvoicePaymentAction/{f=1} f{print} f&&/^}/{exit}' \
-    "$STAGE_DIR/src/app/expenses/actions.ts" | grep -q 'category: "suppliers"' \
+    "$STAGE_DIR/src/app/expenses/actions.ts" | qgrep 'category: "suppliers"' \
   || fail "Batch 107: recordSupplierInvoicePaymentAction does not record an expenses row (category suppliers) - supplier payments would be missing from expense totals."
 grep -q "is_ortho" "$STAGE_DIR/src/lib/db/types.ts" || fail "Batch 107: is_ortho column missing from db types."
 grep -q "is_general" "$STAGE_DIR/src/lib/db/types.ts" || fail "Batch 107: is_general column missing from db types."
@@ -911,11 +919,11 @@ grep -q "left_clinic_at TEXT" "$STAGE_DIR/src/lib/db/client.ts" "$STAGE_DIR/src/
 grep -q "123_clinic_exit_reception" "$STAGE_DIR/src/lib/db/client.ts" \
   || fail "Batch 123: database migration is missing."
 awk '/^export async function updateAppointmentStatusAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/appointments/actions.ts" \
-  | grep -q "isClinicVisitConfirmed" || fail "Batch 123: server-side 3-minute guard is missing from updateAppointmentStatusAction."
+  | qgrep "isClinicVisitConfirmed" || fail "Batch 123: server-side 3-minute guard is missing from updateAppointmentStatusAction."
 awk '/^export async function clearAppointmentAttendanceAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/appointments/actions.ts" \
-  | grep -q "isClinicVisitConfirmed" || fail "Batch 123: server-side 3-minute guard is missing from clearAppointmentAttendanceAction."
+  | qgrep "isClinicVisitConfirmed" || fail "Batch 123: server-side 3-minute guard is missing from clearAppointmentAttendanceAction."
 awk '/^export async function setAppointmentEnteredRoomAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/appointments/actions.ts" \
-  | grep -q "left_clinic_at: now" || fail "Batch 123: entering an occupied clinic does not move the previous patient to reception."
+  | qgrep "left_clinic_at: now" || fail "Batch 123: entering an occupied clinic does not move the previous patient to reception."
 grep -q "home-clinic-reception" "$STAGE_DIR/src/components/CentralSchedule.tsx" \
   || fail "Batch 123: the reception row is missing from the home clinic status."
 grep -q "statusConfirm" "$STAGE_DIR/src/components/CentralSchedule.tsx" \
@@ -938,7 +946,7 @@ require_file "$STAGE_DIR/src/components/ortho/ImageTemplateBoard.tsx"
 require_file "$STAGE_DIR/src/components/OrthoImageTemplateForm.tsx"
 require_file "$STAGE_DIR/src/app/patients/[id]/images/template-actions.ts"
 require_file "$STAGE_DIR/docs/BATCH124.md"
-awk '/INSERT INTO invoices/{print}' "$STAGE_DIR/scripts/seed.js" | grep -q "patient_id" \
+awk '/INSERT INTO invoices/{print}' "$STAGE_DIR/scripts/seed.js" | qgrep "patient_id" \
   || fail "Batch 124: scripts/seed.js still inserts an invoice without patient_id (local seeding would fail)."
 grep -q '"sharp"' "$STAGE_DIR/package.json" \
   || fail "Batch 124: sharp is not an explicit dependency (image classification needs it)."
@@ -953,11 +961,11 @@ grep -q "124_patient_image_kinds" "$STAGE_DIR/src/lib/db/client.ts" \
 grep -q "ortho_image_template" "$STAGE_DIR/src/lib/settings.ts" \
   || fail "Batch 124: the ortho_image_template setting is not registered."
 awk '/^export async function POST/{f=1} f{print}' "$STAGE_DIR/src/app/api/patient-files/upload/route.ts" \
-  | grep -q "analyzeImage" || fail "Batch 124: uploads are not classified in the upload route."
+  | qgrep "analyzeImage" || fail "Batch 124: uploads are not classified in the upload route."
 grep -q "manage_ortho_chart_options" "$STAGE_DIR/src/app/settings/actions.ts" \
   || fail "Batch 124: the template settings action lost its permission guard."
 awk '/^export async function saveOrthoImageTemplateAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/settings/actions.ts" \
-  | grep -q "parseImageTemplate" || fail "Batch 124: the template settings action does not validate the incoming template."
+  | qgrep "parseImageTemplate" || fail "Batch 124: the template settings action does not validate the incoming template."
 grep -q "OrthoImageTemplateForm" "$STAGE_DIR/src/app/settings/page.tsx" \
   || fail "Batch 124: the template editor is not wired into the settings ortho chart section."
 grep -q "ImageTemplateBoard" "$STAGE_DIR/src/components/ortho/OrthoAddImageGroupForm.tsx" "$STAGE_DIR/src/components/ortho/OrthoImageGallery.tsx" \
@@ -998,7 +1006,7 @@ grep -q "aspect-ratio:4 / 3" "$STAGE_DIR/src/app/globals.css" \
   || fail "Batch 126: the fixed-ratio (never stretched) template cells are missing."
 # حذف صورة مربوطة بصورة الملف كان بيعمل كراش (foreign key) - لازم يتصفر الربط الأول.
 awk '/^export async function deleteImageAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/patients/[id]/actions.ts" \
-  | grep -q "avatar_image_id" || fail "Batch 126: deleting an image still does not clear patients.avatar_image_id (crash)."
+  | qgrep "avatar_image_id" || fail "Batch 126: deleting an image still does not clear patients.avatar_image_id (crash)."
 grep -q "URL.createObjectURL" "$STAGE_DIR/src/components/ortho/OrthoAddImageGroupForm.tsx" "$STAGE_DIR/src/components/AddImageGroupForm.tsx" \
   || fail "Batch 126: the upload dialogs do not show real thumbnails for staged files."
 
@@ -1113,7 +1121,7 @@ grep -q 'onClick={onClose}' "$STAGE_DIR/src/components/ortho/ImageTemplateBoard.
 require_file "$STAGE_DIR/docs/BATCH129.md"
 grep -q "isFrontalFace" "$STAGE_DIR/src/lib/images/orientation.ts" \
   || fail "Batch 129: guessAndBakeOrientation no longer gates on isFrontalFace - this is the fix for the mis-rotated Profile photos seen live."
-awk '/^export async function rotateImageAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/patients/[id]/actions.ts" | grep -q "analyzeImage(" \
+awk '/^export async function rotateImageAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/patients/[id]/actions.ts" | qgrep "analyzeImage(" \
   && fail "Batch 129: rotateImageAction still calls analyzeImage() on every click - this must be decoupled per the owner's explicit request (manual rotate, then a separate re-detect)."
 grep -q "reclassifyGroupAction" "$STAGE_DIR/src/components/ortho/ImageTemplateBoard.tsx" \
   || fail "Batch 129: the template board has no re-detect action, so there is no way to reclassify photos after a manual rotation batch."
@@ -1172,19 +1180,19 @@ grep -q "schedule-card-avatar" "$STAGE_DIR/src/app/globals.css" \
 # wrapped the whole card in a new flex column and broke that two-column grid;
 # this checks the fix, not just that PatientAvatar appears somewhere.
 awk '/className="schedule-card-clinical/{f=1} f{print} f&&/className="schedule-card-meta/{exit}' "$STAGE_DIR/src/components/CentralSchedule.tsx" \
-  | grep -q "PatientAvatar" \
+  | qgrep "PatientAvatar" \
   || fail "Batch 130: PatientAvatar must be nested inside schedule-card-clinical (grid-column:2) - the appointment card's two-column grid layout regressed."
 
 # 3) Avatar-crop crash fix: cropFaceThumbnail must never throw past its own
 # fallback (this was the "تعذر تجهيز صورة الملف" bug reported live).
 awk '/^export async function cropFaceThumbnail/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/lib/images/classify.ts" \
-  | grep -q "catch" \
+  | qgrep "catch" \
   || fail "Batch 130: cropFaceThumbnail has no try/catch fallback - this is the exact crash behind 'تعذر تجهيز صورة الملف'."
 # Direct feedback fix #2: when no faceBox exists at all (image not classified
 # as "face"), the fallback crop used a blind fixed "top" anchor - bad framing
 # for anything not perfectly aligned to the very top of the source photo.
 awk '/^export async function cropFaceThumbnail/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/lib/images/classify.ts" \
-  | grep -q "sharp.strategy.attention" \
+  | qgrep "sharp.strategy.attention" \
   || fail "Batch 130: cropFaceThumbnail's no-faceBox fallback still uses a fixed 'top' crop instead of the entropy-based attention strategy."
 
 # 5) Direct feedback fix: the compact "Add photos" dialog (interactive chart)
@@ -1225,7 +1233,7 @@ fi
 # A manual correction must always win outright and clear any learned marker,
 # regardless of how the image got its previous kind.
 awk '/^export async function setImageKindAction/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/app/patients/[id]/images/template-actions.ts" \
-  | grep -q "image_kind_learned: 0" \
+  | qgrep "image_kind_learned: 0" \
   || fail "Batch 130: setImageKindAction does not clear image_kind_learned on manual correction."
 
 # --------------------------------------------------------------------------
@@ -1253,7 +1261,7 @@ grep -q "max-w-\[calc(100vw-2rem)\]" "$STAGE_DIR/src/components/PatientTaskButto
 # the detected skin-blob (real face/eye area), not its raw geometric center
 # (which is pulled down by neck/upper-chest skin also caught in the blob).
 awk '/^export async function cropFaceThumbnail/{f=1} f{print} f&&/^}/{exit}' "$STAGE_DIR/src/lib/images/classify.ts" \
-  | grep -q "faceBox.height \* 0\.35" \
+  | qgrep "faceBox.height \* 0\.35" \
   || fail "Batch 131: cropFaceThumbnail still centers the crop on the raw skin-blob center instead of the tuned upward bias — this is the 'shows too much hair, cuts the face' feedback fix."
 
 # 3) Interactive chart must always keep its full working width, with a
@@ -1411,12 +1419,12 @@ grep -q 'assertServiceCodeFree' "$STAGE_DIR/src/app/settings/actions.ts" \
   || fail "settings/actions.ts does not validate duplicate service codes."
 for svc_file in src/app/page.tsx src/app/front-desk/page.tsx "src/app/patients/[id]/page.tsx" "src/app/patients/[id]/billing/page.tsx" src/app/expenses/page.tsx; do
   grep -q 'selectFrom("services")' "$STAGE_DIR/$svc_file" || fail "expected a services query in $svc_file"
-  grep 'selectFrom("services")' "$STAGE_DIR/$svc_file" | grep -q '"active", "=", 1' \
+  grep 'selectFrom("services")' "$STAGE_DIR/$svc_file" | qgrep '"active", "=", 1' \
     || fail "$svc_file lists services without filtering active = 1, so deactivated services would still be pickable."
 done
 # Deliberately NOT filtered: settings (so a service can be reactivated) and
 # reports-data (so old records keep resolving their service name).
-grep 'selectFrom("services")' "$STAGE_DIR/src/lib/reports-data.ts" | grep -q '"active", "=", 1' \
+grep 'selectFrom("services")' "$STAGE_DIR/src/lib/reports-data.ts" | qgrep '"active", "=", 1' \
   && fail "reports-data.ts must NOT filter inactive services - historical rows would lose their service name." || true
 
 echo "== batch 134: statistics never shows a partial expense sum as a total =="
@@ -1623,7 +1631,7 @@ require_file "$STAGE_DIR/docs/BATCH140.md"
 # Neither file may fall back to the raw history API - that is the exact bug.
 for rel in src/lib/url-report-state.ts src/components/ReportsWorkspace.tsx; do
   # Comment lines are skipped: both files explain the old approach in prose.
-  if grep -v '^[[:space:]]*//' "$STAGE_DIR/$rel" | grep -q 'window.history.replaceState'; then
+  if grep -v '^[[:space:]]*//' "$STAGE_DIR/$rel" | qgrep 'window.history.replaceState'; then
     fail "Batch 140: $rel still writes the URL with window.history.replaceState - Next.js cannot track that, so browser back loses the report tab."
   fi
   grep -q 'router.replace(' "$STAGE_DIR/$rel" \
@@ -1641,7 +1649,7 @@ for rel in "${!BATCH138_REPORT_FILES[@]}"; do
     || fail "Batch 140: $rel does not import useRouter from next/navigation."
   grep -q 'writeUrlReportParams(router, ' "$file" \
     || fail "Batch 140: $rel does not pass its router to writeUrlReportParams."
-  if grep 'writeUrlReportParams(' "$file" | grep -v 'import' | grep -qv 'writeUrlReportParams(router, '; then
+  if grep 'writeUrlReportParams(' "$file" | grep -v 'import' | qgrep -v 'writeUrlReportParams(router, '; then
     fail "Batch 140: $rel has a writeUrlReportParams call that does not pass the router."
   fi
 done
@@ -1657,7 +1665,7 @@ HB="$STAGE_DIR/src/components/HeaderBackButton.tsx"
 grep -q 'useSearchParams' "$HB" || fail "Batch 141: HeaderBackButton.tsx does not read the query string (useSearchParams)."
 grep -q '<Suspense' "$HB" || fail "Batch 141: HeaderBackButton.tsx must wrap useSearchParams in <Suspense>."
 grep -q 'clinic-app-page-history-v2' "$HB" || fail "Batch 141: HeaderBackButton.tsx still uses the old pathname-only history key."
-if grep -v '^[[:space:]]*//' "$HB" | grep -q 'history.push(pathname)'; then
+if grep -v '^[[:space:]]*//' "$HB" | qgrep 'history.push(pathname)'; then
   fail "Batch 141: HeaderBackButton.tsx still pushes the bare pathname - that is the exact bug."
 fi
 grep -q 'export function useUrlReportParams' "$STAGE_DIR/src/lib/url-report-state.ts" \
